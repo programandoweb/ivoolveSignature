@@ -25,6 +25,7 @@ class InitiateSignatureRequest extends FormRequest
             'signers' => ['required', 'array', 'min:1'],
             'signers.*.user_id' => ['required', 'string', 'max:255', 'distinct'],
             'signers.*.user_name' => ['required', 'string', 'max:255'],
+            'signers.*.phone_number' => ['nullable', 'string', 'max:30'],
         ];
     }
 

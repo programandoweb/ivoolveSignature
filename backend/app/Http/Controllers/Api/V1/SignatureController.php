@@ -132,6 +132,7 @@ class SignatureController extends Controller
                     'version_number' => $signature->version_number,
                     'user_id' => $signature->user_id,
                     'user_name' => $signature->user_name,
+                    'phone_number' => $signature->phone_number,
                     'status' => $signature->otp_verified_at === null ? 'pending' : 'signed',
                 ])
                 ->all(),

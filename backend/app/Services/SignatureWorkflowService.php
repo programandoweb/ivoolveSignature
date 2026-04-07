@@ -58,6 +58,9 @@ class SignatureWorkflowService
                         'version_number' => $index + 1,
                         'user_id' => $signer['user_id'],
                         'user_name' => $signer['user_name'],
+                        'phone_number' => isset($signer['phone_number'])
+                            ? trim((string) $signer['phone_number'])
+                            : null,
                     ]);
 
                     $this->otpService->issue($signature);

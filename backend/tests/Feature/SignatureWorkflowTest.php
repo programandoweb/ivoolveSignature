@@ -7,6 +7,7 @@ use App\Services\PdfProcessorService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Mockery\MockInterface;
 use Tests\TestCase;
 
@@ -122,5 +123,44 @@ class SignatureWorkflowTest extends TestCase
             'id' => $documentId,
             'status' => 'completed',
         ]);
+    }
+
+    public function test_it_sends_the_otp_over_whatsapp_when_phone_and_endpoint_are_present(): void
+    {
+        Http::fake([
+            'https://app2.delicetiendavirtual.com/whatsapp/delice_bot/send' => Http::response([
+                'success' => true,
+            ], 200),
+        ]);
+
+        config()->set('signature.whatsapp_endpoint', 'https://app2.delicetiendavirtual.com/whatsapp/delice_bot/send');
+
+        $pdf = UploadedFile::fake()->createWithContent('contract.pdf', '%PDF-1.4 test original document');
+
+        $response = $this->withHeaders([
+            'X-API-KEY' => 'testing-api-key',
+            'Accept' => 'application/json',
+        ])->post('/api/v1/signatures/initiate', [
+            'external_id' => 'OTP-2026-0001',
+            'app_source' => 'ivoolve-flow',
+            'pdf' => $pdf,
+            'signers' => [
+                [
+                    'user_id' => '30303030',
+                    'user_name' => 'Maria Ruiz',
+                    'phone_number' => '573001234567',
+                ],
+            ],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.signatures.0.phone_number', '573001234567');
+
+        Http::assertSent(function ($request): bool {
+            return $request->url() === 'https://app2.delicetiendavirtual.com/whatsapp/delice_bot/send'
+                && $request['to'] === '573001234567'
+                && str_contains((string) $request['message'], 'Maria Ruiz')
+                && str_contains((string) $request['message'], 'OTP-2026-0001');
+        });
     }
 }

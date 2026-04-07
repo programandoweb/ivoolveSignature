@@ -29,6 +29,10 @@ Configuracion relacionada:
 - `SIGNATURE_STORAGE_DISK`
 - `SIGNATURE_BRANDING_COLOR`
 - `SIGNATURE_MAX_UPLOAD_SIZE_KB`
+- `SIGNATURE_WHATSAPP_ENDPOINT`
+- `SIGNATURE_WHATSAPP_TIMEOUT`
+- `SIGNATURE_WHATSAPP_CONNECT_TIMEOUT`
+- `SIGNATURE_WHATSAPP_VERIFY_SSL`
 
 Si `SIGNATURE_API_KEY` no esta configurada, la API responde:
 
@@ -53,7 +57,7 @@ con estado `401`.
 ## Flujo recomendado
 
 1. Consumir `POST /api/v1/signatures/initiate` para registrar el PDF original y los firmantes.
-2. Leer el OTP generado para cada firmante desde el log de Laravel.
+2. Si el firmante tiene `phone_number` y existe `SIGNATURE_WHATSAPP_ENDPOINT`, el OTP se envia por WhatsApp. Si no, queda registrado en el log de Laravel.
 3. Consumir `POST /api/v1/signatures/verify` una vez por cada firmante, respetando el orden de version.
 4. Usar la `validation_url` devuelta por la API o el QR dentro del PDF para validar el documento.
 
@@ -96,6 +100,7 @@ Campos requeridos:
 - `signers`: arreglo de firmantes.
 - `signers.*.user_id`: identificador del firmante.
 - `signers.*.user_name`: nombre del firmante.
+- `signers.*.phone_number`: numero de WhatsApp del firmante. Es opcional, pero recomendado para envio automatico del OTP.
 
 **Ejemplo cURL**
 
@@ -108,8 +113,10 @@ curl --request POST "http://localhost/api/v1/signatures/initiate" \
   --form "pdf=@/ruta/contrato.pdf" \
   --form "signers[0][user_id]=10101010" \
   --form "signers[0][user_name]=Ana Lopez" \
+  --form "signers[0][phone_number]=573001112233" \
   --form "signers[1][user_id]=20202020" \
-  --form "signers[1][user_name]=Luis Perez"
+  --form "signers[1][user_name]=Luis Perez" \
+  --form "signers[1][phone_number]=573009998877"
 ```
 
 **Respuesta exitosa**
@@ -132,6 +139,7 @@ Estado: `201 Created`
         "version_number": 1,
         "user_id": "10101010",
         "user_name": "Ana Lopez",
+        "phone_number": "573001112233",
         "status": "pending"
       },
       {
@@ -139,6 +147,7 @@ Estado: `201 Created`
         "version_number": 2,
         "user_id": "20202020",
         "user_name": "Luis Perez",
+        "phone_number": "573009998877",
         "status": "pending"
       }
     ]
@@ -150,7 +159,9 @@ Estado: `201 Created`
 
 - Al iniciar, el sistema guarda la version original como `v0-original.pdf`.
 - Se calcula y registra el `final_hash` inicial del archivo original.
-- Se genera un OTP por cada firmante y se registra en logs mediante `Log::info`.
+- Se genera un OTP por cada firmante.
+- Si existe `signers.*.phone_number` y `SIGNATURE_WHATSAPP_ENDPOINT`, el OTP se envia al endpoint de WhatsApp.
+- Siempre se registra trazabilidad en logs mediante `Log::info`.
 
 **Errores comunes**
 
@@ -335,7 +346,18 @@ No requiere `X-API-KEY`.
 
 ## OTP y trazabilidad
 
-Actualmente el envio del OTP esta simulado mediante log de Laravel. Busca entradas similares a esta en `storage/logs/laravel.log`:
+Cuando `phone_number` esta presente y `SIGNATURE_WHATSAPP_ENDPOINT` esta configurado, el microservicio envia un `POST` JSON al endpoint de WhatsApp con esta estructura:
+
+```json
+{
+  "to": "573001112233",
+  "message": "Hola Ana Lopez, tu codigo OTP para firmar el documento VAC-2026-0001 es 123456. No lo compartas con nadie."
+}
+```
+
+Si no se envia `phone_number`, el OTP queda disponible solo en logs.
+
+Busca entradas similares a esta en `storage/logs/laravel.log`:
 
 ```text
 Signature OTP dispatched.
@@ -347,7 +369,9 @@ Cada entrada incluye:
 - `signature_id`
 - `version_number`
 - `user_id`
+- `phone_number`
 - `otp_code`
+- `channel`
 
 ## Datos que se estampan en el PDF
 
@@ -372,6 +396,7 @@ El sello visual usa el color corporativo:
 - `verify` debe enviarse como JSON.
 - `document_id` es el UUID interno del microservicio; no usar `external_id` para firmar.
 - `external_id` sirve para relacionar el documento con tu sistema origen.
+- Para envio automatico del OTP, envia `signers.*.phone_number`.
 - El QR siempre apunta a la `validation_url` del documento.
 - El hash final cambia despues de cada firma aplicada.
 

@@ -15,6 +15,7 @@ class Signature extends Model
         'version_number',
         'user_id',
         'user_name',
+        'phone_number',
         'otp_code',
         'otp_verified_at',
         'ip_address',
